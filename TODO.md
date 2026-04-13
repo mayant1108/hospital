@@ -1,0 +1,1 @@
+- [x] 1.1 Controllers already return proper `{success: true, count, data}` format ✓
