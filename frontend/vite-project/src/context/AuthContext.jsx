@@ -1,28 +1,11 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-
-const AuthContext = createContext();
-export { AuthContext };
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+import { useState } from 'react';
+import { AuthContext } from './auth-context';
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (token) {
-      // Verify token with backend if needed
-      setUser({ token }); // Placeholder, fetch user info
-    }
-    setLoading(false);
-  }, [token]);
+  const storedToken = localStorage.getItem('token');
+  const [user, setUser] = useState(storedToken ? { token: storedToken } : null);
+  const [token, setToken] = useState(storedToken);
+  const [loading] = useState(false);
 
   const login = (newToken, userData) => {
     localStorage.setItem('token', newToken);

@@ -1,7 +1,12 @@
-import { cn } from '../utils';
 import { X } from 'lucide-react';
 
-const Modal = ({ isOpen, onClose, title, children }) => {
+const sizes = {
+  md: 'sm:max-w-lg',
+  lg: 'sm:max-w-2xl',
+  xl: 'sm:max-w-4xl',
+};
+
+const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
   return (
@@ -9,7 +14,11 @@ const Modal = ({ isOpen, onClose, title, children }) => {
       <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
         <div className="fixed inset-0 bg-black/30 transition-opacity" aria-hidden="true" onClick={onClose} />
         
-        <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+        <div
+          className={`relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full ${
+            sizes[size] || sizes.md
+          }`}
+        >
           <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
             <div className="sm:flex sm:items-start">
               <div className="mt-3 sm:ml-4 sm:mt-0 sm:text-left w-full">

@@ -12,8 +12,17 @@ export const getAppointments = async (req, res) => {
     if (date) query.date = { $gte: new Date(date) };
 
     const appointments = await Appointment.find(query)
-      .populate('patient', 'name email phone')
-      .populate('doctor', 'name specialization')
+      .populate({
+        path: 'patient',
+        select: 'age gender address user',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .populate({
+        path: 'doctor',
+        select: 'specialization experience fees availableTime user',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .populate('clinic', 'name address phone')
       .sort({ date: 1, time: 1 });
     
     res.json({ success: true, count: appointments.length, data: appointments });
@@ -26,8 +35,17 @@ export const getAppointments = async (req, res) => {
 export const getAppointment = async (req, res) => {
   try {
     const appointment = await Appointment.findById(req.params.id)
-      .populate('patient', 'name email phone')
-      .populate('doctor', 'name specialization');
+      .populate({
+        path: 'patient',
+        select: 'age gender address user',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .populate({
+        path: 'doctor',
+        select: 'specialization experience fees availableTime user',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .populate('clinic', 'name address phone');
     if (!appointment) {
       return res.status(404).json({ success: false, message: 'Appointment not found' });
     }
@@ -43,8 +61,17 @@ export const createAppointment = async (req, res) => {
     const appointment = new Appointment(req.body);
     await appointment.save();
     const populated = await Appointment.findById(appointment._id)
-      .populate('patient', 'name email phone')
-      .populate('doctor', 'name specialization');
+      .populate({
+        path: 'patient',
+        select: 'age gender address user',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .populate({
+        path: 'doctor',
+        select: 'specialization experience fees availableTime user',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .populate('clinic', 'name address phone');
     res.status(201).json({ success: true, data: populated });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -58,8 +85,18 @@ export const updateAppointment = async (req, res) => {
       req.params.id, 
       req.body, 
       { new: true, runValidators: true }
-    ).populate('patient', 'name email phone')
-     .populate('doctor', 'name specialization');
+    )
+      .populate({
+        path: 'patient',
+        select: 'age gender address user',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .populate({
+        path: 'doctor',
+        select: 'specialization experience fees availableTime user',
+        populate: { path: 'user', select: 'name email phone' }
+      })
+      .populate('clinic', 'name address phone');
     if (!appointment) {
       return res.status(404).json({ success: false, message: 'Appointment not found' });
     }

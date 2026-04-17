@@ -1,171 +1,512 @@
-import { useGet } from '../hooks/useApi';
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { CalendarCheck, CalendarClock, Clock3, Plus } from 'lucide-react';
+import AdminLayout, { AdminActionButton } from '../components/AdminLayout';
+import {
+  EmptyState,
+  LoadingState,
+  MetricCard,
+  SearchToolbar,
+  StatusBadge,
+  TableShell,
+} from '../components/AdminUI';
+import Modal from '../components/Modal';
 import Table from '../components/Table';
-import Sidebar from '../components/Sidebar';
-import { Loader2, Plus, Search, Filter } from 'lucide-react';
-import { useState } from 'react';
+import { api, useGet } from '../hooks/useApi';
+
+const fieldClass =
+  'mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+
+const textAreaClass =
+  'mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+
+const appointmentFormDefaults = {
+  patient: '',
+  doctor: '',
+  date: new Date().toISOString().slice(0, 10),
+  time: '09:00',
+  status: 'pending',
+  reason: '',
+};
+
+const getAppointmentPatientName = (appointment) =>
+  appointment.patient?.user?.name ||
+  appointment.patient?.name ||
+  appointment.patientName ||
+  'Unknown patient';
+
+const getAppointmentDoctorName = (appointment) =>
+  appointment.doctor?.user?.name ||
+  appointment.doctor?.name ||
+  appointment.doctorName ||
+  'Doctor not assigned';
+
+const getPatientRecordName = (patient) => patient.user?.name || patient.name || 'Unknown patient';
+const getDoctorRecordName = (doctor) =>
+  doctor.user?.name || doctor.name || `Dr. ${doctor.specialization || 'Specialist'}`;
+
+const formatDate = (date) =>
+  date
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(new Date(date))
+    : 'Not set';
+
+const getInputDate = (date) => (date ? new Date(date).toISOString().slice(0, 10) : '');
+
+const getErrorMessage = (error, fallback) =>
+  error?.response?.data?.message || error?.message || fallback;
+
+const getAppointmentForm = (appointment) => ({
+  patient: appointment.patient?._id || appointment.patient || '',
+  doctor: appointment.doctor?._id || appointment.doctor || '',
+  date: getInputDate(appointment.date),
+  time: appointment.time || '09:00',
+  status: appointment.status || 'pending',
+  reason: appointment.reason || '',
+});
 
 const Appointments = () => {
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data, isLoading } = useGet('/appointments');
+  const { data: patients } = useGet('/patients');
+  const { data: doctors } = useGet('/doctors');
   const [searchTerm, setSearchTerm] = useState('');
+  const [modalMode, setModalMode] = useState(null);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [form, setForm] = useState(appointmentFormDefaults);
+  const [formError, setFormError] = useState('');
+  const activeModalMode = searchParams.get('new') === '1' ? 'create' : modalMode;
 
-  const columns = [
-    'ID',
-    'Patient',
-    'Doctor',
-    'Date & Time',
-    'Status',
-    'Actions'
-  ];
+  const appointmentRows = useMemo(() => data?.data || [], [data?.data]);
+  const patientRows = useMemo(() => patients?.data || [], [patients?.data]);
+  const doctorRows = useMemo(() => doctors?.data || [], [doctors?.data]);
 
-  const filteredAppointments =
-    data?.data?.filter((appointment) =>
-      (appointment.patient?.name || '')
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      (appointment.doctor?.name || '')
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
-    ) || [];
+  const filteredAppointments = useMemo(
+    () =>
+      appointmentRows.filter((appointment) => {
+        const query = searchTerm.toLowerCase();
+        return (
+          getAppointmentPatientName(appointment).toLowerCase().includes(query) ||
+          getAppointmentDoctorName(appointment).toLowerCase().includes(query) ||
+          (appointment.status || '').toLowerCase().includes(query)
+        );
+      }),
+    [appointmentRows, searchTerm]
+  );
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'confirmed':
-        return 'bg-green-50 text-green-700';
-      case 'cancelled':
-        return 'bg-red-50 text-red-700';
-      case 'pending':
-        return 'bg-yellow-50 text-yellow-700';
-      default:
-        return 'bg-gray-50 text-gray-700';
+  const confirmed = appointmentRows.filter(
+    (appointment) => appointment.status === 'confirmed'
+  ).length;
+  const pending = appointmentRows.filter(
+    (appointment) => appointment.status === 'pending'
+  ).length;
+
+  const refreshAppointments = () => {
+    queryClient.invalidateQueries({ queryKey: ['get', '/appointments'] });
+    queryClient.invalidateQueries({ queryKey: ['get', '/payments'] });
+    queryClient.invalidateQueries({ queryKey: ['get', '/stats'] });
+  };
+
+  const saveAppointment = useMutation({
+    mutationFn: (payload) =>
+      activeModalMode === 'edit'
+        ? api.put(`/appointments/${selectedAppointment._id}`, payload)
+        : api.post('/appointments', payload),
+    onSuccess: () => {
+      refreshAppointments();
+      closeModal();
+    },
+    onError: (error) => {
+      setFormError(getErrorMessage(error, 'Appointment could not be saved'));
+    },
+  });
+
+  const cancelAppointment = useMutation({
+    mutationFn: (appointmentId) => api.put(`/appointments/${appointmentId}`, { status: 'cancelled' }),
+    onSuccess: () => {
+      refreshAppointments();
+      closeModal();
+    },
+    onError: (error) => {
+      setFormError(getErrorMessage(error, 'Appointment could not be cancelled'));
+    },
+  });
+
+  const closeModal = () => {
+    if (searchParams.get('new') === '1') {
+      setSearchParams({}, { replace: true });
     }
+    setModalMode(null);
+    setSelectedAppointment(null);
+    setForm(appointmentFormDefaults);
+    setFormError('');
+  };
+
+  const openCreate = () => {
+    setSelectedAppointment(null);
+    setForm(appointmentFormDefaults);
+    setFormError('');
+    setModalMode('create');
+  };
+
+  const openEdit = (appointment) => {
+    setSelectedAppointment(appointment);
+    setForm(getAppointmentForm(appointment));
+    setFormError('');
+    setModalMode('edit');
+  };
+
+  const openView = (appointment) => {
+    setSelectedAppointment(appointment);
+    setFormError('');
+    setModalMode('view');
+  };
+
+  const openCancel = (appointment) => {
+    setSelectedAppointment(appointment);
+    setFormError('');
+    setModalMode('cancel');
+  };
+
+  const handleFormChange = (event) => {
+    const { name, value } = event.target;
+    setFormError('');
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  };
+
+  const getAppointmentPayload = () => {
+    const selectedDoctor = doctorRows.find((doctor) => doctor._id === form.doctor);
+    const payload = {
+      patient: form.patient,
+      doctor: form.doctor,
+      date: form.date,
+      time: form.time,
+      status: form.status,
+      reason: form.reason.trim(),
+    };
+
+    const clinicId = selectedDoctor?.clinic?._id || selectedDoctor?.clinic;
+    if (clinicId) payload.clinic = clinicId;
+
+    return payload;
+  };
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    saveAppointment.mutate(getAppointmentPayload());
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 overflow-auto">
-        <div className="p-8">
+    <AdminLayout
+      title="Appointments"
+      description="Track daily patient visits, doctor assignments, and appointment status in one clean queue."
+      actions={<AdminActionButton onClick={openCreate}>New Appointment</AdminActionButton>}
+    >
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <MetricCard
+          title="Total Appointments"
+          value={appointmentRows.length.toLocaleString('en-IN')}
+          detail="All scheduled visits"
+          icon={CalendarClock}
+          tone="blue"
+        />
+        <MetricCard
+          title="Confirmed"
+          value={confirmed.toLocaleString('en-IN')}
+          detail="Ready for visit"
+          icon={CalendarCheck}
+          tone="green"
+        />
+        <MetricCard
+          title="Pending"
+          value={pending.toLocaleString('en-IN')}
+          detail="Needs follow-up"
+          icon={Clock3}
+          tone="amber"
+        />
+      </section>
 
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900">Appointments</h1>
-              <p className="text-gray-600 mt-2">
-                Manage and schedule appointments
-              </p>
-            </div>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg flex items-center font-medium">
-              <Plus className="w-4 h-4 mr-2" />
-              New Appointment
+      <section className="mt-6">
+        <SearchToolbar
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Search by patient, doctor, or status"
+          count={filteredAppointments.length}
+          right={
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Quick Add
             </button>
-          </div>
+          }
+        />
 
-          {/* Filters */}
-          <div className="flex gap-4 mb-6">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by patient or doctor name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <button className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-gray-700">
-              <Filter className="w-5 h-5" />
-              Filter
-            </button>
-          </div>
-
-          {/* Table */}
-          <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
-            {isLoading ? (
-              <div className="p-12 text-center">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-400" />
-                <p className="text-gray-500">Loading appointments...</p>
-              </div>
-            ) : filteredAppointments.length === 0 ? (
-              <div className="p-12 text-center">
-                <p className="text-gray-500 mb-4">No appointments found</p>
-                <button className="text-blue-600 hover:text-blue-800 font-medium">
-                  Book first appointment
-                </button>
-              </div>
-            ) : (
-              <Table>
-                <Table.Header>
-                  <Table.Row>
-                    {columns.map((column) => (
-                      <Table.Head key={column}>{column}</Table.Head>
-                    ))}
-                  </Table.Row>
-                </Table.Header>
-
-                <Table.Body>
-                  {filteredAppointments.map((appointment) => (
-                    <Table.Row key={appointment._id}>
-                      <Table.Cell className="font-medium text-blue-600">
-                        {appointment.appointmentId ||
-                          appointment._id.slice(-6)}
-                      </Table.Cell>
-
-                      <Table.Cell className="font-medium">
-                        {appointment.patient?.name}
-                      </Table.Cell>
-
-                      <Table.Cell>
-                        {appointment.doctor?.name}
-                      </Table.Cell>
-
-                      <Table.Cell>
-                        <div>
-                          <p className="font-medium">
-                            {new Date(
-                              appointment.date
-                            ).toLocaleDateString()}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {appointment.time}
-                          </p>
-                        </div>
-                      </Table.Cell>
-
-                      <Table.Cell>
-                        <span
-                          className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                            appointment.status
-                          )}`}
+        <TableShell>
+          {isLoading ? (
+            <LoadingState label="Loading appointments..." />
+          ) : filteredAppointments.length === 0 ? (
+            <EmptyState
+              title="No appointments found"
+              description="Try another search term or create a new appointment."
+            />
+          ) : (
+            <Table>
+              <Table.Header>
+                <Table.Row>
+                  <Table.Head>Appointment</Table.Head>
+                  <Table.Head>Patient</Table.Head>
+                  <Table.Head>Doctor</Table.Head>
+                  <Table.Head>Date & Time</Table.Head>
+                  <Table.Head>Status</Table.Head>
+                  <Table.Head>Actions</Table.Head>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {filteredAppointments.map((appointment) => (
+                  <Table.Row key={appointment._id}>
+                    <Table.Cell className="font-extrabold text-[#111827]">
+                      #{appointment._id.slice(-6).toUpperCase()}
+                    </Table.Cell>
+                    <Table.Cell>{getAppointmentPatientName(appointment)}</Table.Cell>
+                    <Table.Cell>
+                      <div>
+                        <p className="font-medium text-slate-800">
+                          {getAppointmentDoctorName(appointment)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {appointment.doctor?.specialization || 'Specialist'}
+                        </p>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <p className="font-medium text-slate-800">
+                        {formatDate(appointment.date)}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {appointment.time || 'Time not set'}
+                      </p>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <StatusBadge status={appointment.status} />
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openView(appointment)}
+                          className="text-sm font-bold text-blue-600 hover:text-blue-800"
                         >
-                          {appointment.status}
-                        </span>
-                      </Table.Cell>
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(appointment)}
+                          className="text-sm font-bold text-slate-600 hover:text-slate-900"
+                        >
+                          Reschedule
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openCancel(appointment)}
+                          className="text-sm font-bold text-red-600 hover:text-red-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table>
+          )}
+        </TableShell>
+      </section>
 
-                      <Table.Cell>
-                        <div className="flex space-x-2">
-                          <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                            View
-                          </button>
-                          <button className="text-green-600 hover:text-green-800 text-sm font-medium">
-                            Reschedule
-                          </button>
-                          <button className="text-red-600 hover:text-red-800 text-sm font-medium">
-                            Cancel
-                          </button>
-                        </div>
-                      </Table.Cell>
-                    </Table.Row>
-                  ))}
-                </Table.Body>
-              </Table>
-            )}
+      <Modal
+        isOpen={activeModalMode === 'create' || activeModalMode === 'edit'}
+        onClose={closeModal}
+        title={activeModalMode === 'edit' ? 'Reschedule Appointment' : 'New Appointment'}
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {formError ? (
+            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {formError}
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <label className="text-sm font-bold text-slate-700">
+              Patient
+              <select
+                name="patient"
+                value={form.patient}
+                onChange={handleFormChange}
+                className={fieldClass}
+                required
+              >
+                <option value="">Select patient</option>
+                {patientRows.map((patient) => (
+                  <option key={patient._id} value={patient._id}>
+                    {getPatientRecordName(patient)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-bold text-slate-700">
+              Doctor
+              <select
+                name="doctor"
+                value={form.doctor}
+                onChange={handleFormChange}
+                className={fieldClass}
+                required
+              >
+                <option value="">Select doctor</option>
+                {doctorRows.map((doctor) => (
+                  <option key={doctor._id} value={doctor._id}>
+                    {getDoctorRecordName(doctor)} - {doctor.specialization}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-bold text-slate-700">
+              Date
+              <input
+                type="date"
+                name="date"
+                value={form.date}
+                onChange={handleFormChange}
+                className={fieldClass}
+                required
+              />
+            </label>
+            <label className="text-sm font-bold text-slate-700">
+              Time
+              <input
+                name="time"
+                value={form.time}
+                onChange={handleFormChange}
+                className={fieldClass}
+                placeholder="10:00"
+                required
+              />
+            </label>
+            <label className="text-sm font-bold text-slate-700">
+              Status
+              <select
+                name="status"
+                value={form.status}
+                onChange={handleFormChange}
+                className={fieldClass}
+              >
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+            <label className="text-sm font-bold text-slate-700 md:col-span-2">
+              Reason
+              <textarea
+                name="reason"
+                value={form.reason}
+                onChange={handleFormChange}
+                className={textAreaClass}
+                rows="3"
+                placeholder="Visit reason"
+              />
+            </label>
           </div>
 
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={closeModal}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saveAppointment.isPending}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-extrabold text-white disabled:bg-slate-400"
+            >
+              {saveAppointment.isPending ? 'Saving...' : 'Save Appointment'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={activeModalMode === 'view'}
+        onClose={closeModal}
+        title="Appointment Details"
+        size="lg"
+      >
+        {selectedAppointment ? (
+          <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+            {[
+              ['Patient', getAppointmentPatientName(selectedAppointment)],
+              ['Doctor', getAppointmentDoctorName(selectedAppointment)],
+              ['Speciality', selectedAppointment.doctor?.specialization || 'Specialist'],
+              ['Date', formatDate(selectedAppointment.date)],
+              ['Time', selectedAppointment.time || 'Not set'],
+              ['Status', selectedAppointment.status || 'pending'],
+              ['Clinic', selectedAppointment.clinic?.name || 'Not assigned'],
+              ['Reason', selectedAppointment.reason || 'Not added'],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-lg bg-slate-50 p-4">
+                <p className="text-xs font-extrabold uppercase text-slate-400">{label}</p>
+                <p className="mt-1 font-bold text-slate-800">{value}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal isOpen={activeModalMode === 'cancel'} onClose={closeModal} title="Cancel Appointment">
+        {formError ? (
+          <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {formError}
+          </div>
+        ) : null}
+        <p className="text-sm font-semibold leading-6 text-slate-600">
+          Mark appointment{' '}
+          {selectedAppointment ? `#${selectedAppointment._id.slice(-6).toUpperCase()}` : ''}{' '}
+          as cancelled?
+        </p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={closeModal}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700"
+          >
+            Keep
+          </button>
+          <button
+            type="button"
+            onClick={() => cancelAppointment.mutate(selectedAppointment._id)}
+            disabled={cancelAppointment.isPending}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-extrabold text-white disabled:bg-slate-400"
+          >
+            {cancelAppointment.isPending ? 'Cancelling...' : 'Cancel Appointment'}
+          </button>
         </div>
-      </div>
-    </div>
+      </Modal>
+    </AdminLayout>
   );
 };
 
 export default Appointments;
-

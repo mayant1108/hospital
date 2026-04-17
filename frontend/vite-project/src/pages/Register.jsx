@@ -10,6 +10,7 @@ const Register = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
     role: 'doctor' // or 'patient'
   });
@@ -58,6 +59,17 @@ const Register = () => {
                 placeholder="Email"
                 value={formData.email}
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Input
+                type="tel"
+                placeholder="Phone number (10 digits)"
+                value={formData.phone}
+                onChange={(e) => setFormData({...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10)})}
+                minLength={10}
+                maxLength={10}
                 required
               />
             </div>

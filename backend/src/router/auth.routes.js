@@ -9,8 +9,15 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 router.post("/register", async (req, res) => {
     try {
-        const { name, email, phone, password } = req.body;
+        const { name, email, phone, password, role } = req.body;
 
+        if (!name || !email || !phone || !password) {
+            return res.status(400).json({ message: "Name, email, phone and password are required" });
+        }
+
+        if (!/^\d{10}$/.test(phone)) {
+            return res.status(400).json({ message: "Phone number must be 10 digits" });
+        }
     
         const existingUser = await User.findOne({ email });
         if (existingUser) {
@@ -21,7 +28,8 @@ router.post("/register", async (req, res) => {
             name,
             email,
             phone,
-            password
+            password,
+            role
         });
 
         await user.save();
@@ -46,7 +54,7 @@ router.post("/register", async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ message: "Server error", error: error.message });
+        res.status(400).json({ message: error.message || "Registration failed" });
     }
 });
 
@@ -55,7 +63,7 @@ router.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email }).select("+password");
         if (!user) {
             return res.status(400).json({ message: "Invalid email or password" });
         }
@@ -63,6 +71,11 @@ router.post("/login", async (req, res) => {
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
             return res.status(400).json({ message: "Invalid email or password" });
+        }
+
+        if (!user.password.startsWith('$2')) {
+            user.password = password;
+            await user.save();
         }
 
   

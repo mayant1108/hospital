@@ -1,189 +1,163 @@
+import {
+  Activity,
+  Calendar,
+  ClipboardCheck,
+  DollarSign,
+  HeartPulse,
+  Stethoscope,
+  Users,
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import AdminLayout, { AdminActionButton } from '../components/AdminLayout';
+import { MetricCard, StatusBadge } from '../components/AdminUI';
 import { useAuth } from '../hooks/useAuth';
 import { useGet } from '../hooks/useApi';
-import Sidebar from '../components/Sidebar';
-import { Users, Calendar, DollarSign, TrendingUp } from 'lucide-react';
+
+const formatCurrency = (value) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(value || 0);
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { data: statsData } = useGet('/stats');
 
-  const getStatColor = (index) => {
-    const colors = [
-      { bg: 'bg-blue-50', text: 'text-blue-600', icon: 'text-blue-600' },
-      { bg: 'bg-green-50', text: 'text-green-600', icon: 'text-green-600' },
-      { bg: 'bg-purple-50', text: 'text-purple-600', icon: 'text-purple-600' },
-    ];
-
-    return colors[index];
-  };
-
-  const stats = [
+  const stats = statsData?.data || {};
+  const metrics = [
     {
       title: 'Total Patients',
-      value: statsData?.data?.patients?.total?.toLocaleString() || '0',
-      change: '+12%',
+      value: stats.patients?.total?.toLocaleString('en-IN') || '0',
+      detail: `${stats.patients?.todayNew || 0} new today`,
       icon: Users,
-      colorIndex: 0,
+      tone: 'blue',
     },
     {
-      title: 'Appointments (Week)',
-      value: statsData?.data?.appointments?.week?.toLocaleString() || '0',
-      change: '+5%',
+      title: 'Today Appointments',
+      value: stats.appointments?.today?.toLocaleString('en-IN') || '0',
+      detail: `${stats.appointments?.week || 0} this week`,
       icon: Calendar,
-      colorIndex: 1,
+      tone: 'blue',
     },
     {
-      title: 'Revenue',
-      value: '$' + (statsData?.data?.revenue?.total || 0).toLocaleString(),
-      change: '+8%',
+      title: 'Total Revenue',
+      value: formatCurrency(stats.revenue?.total),
+      detail: `${formatCurrency(stats.revenue?.month)} this month`,
       icon: DollarSign,
-      colorIndex: 2,
+      tone: 'amber',
+    },
+    {
+      title: 'Care Quality',
+      value: '98%',
+      detail: 'Patient satisfaction target',
+      icon: HeartPulse,
+      tone: 'rose',
+    },
+  ];
+
+  const activity = [
+    {
+      title: 'Appointments queue reviewed',
+      description: 'Front desk should confirm pending visits before 11:00 AM.',
+      status: 'confirmed',
+    },
+    {
+      title: 'Patient records updated',
+      description: 'New medical history updates are ready for doctor review.',
+      status: 'completed',
+    },
+    {
+      title: 'Payment follow-up',
+      description: 'Pending payments need billing desk attention today.',
+      status: 'pending',
     },
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+    <AdminLayout
+      title="Dashboard"
+      description={`Welcome back, ${user?.name || 'Admin'}. Monitor hospital operations, patient flow, and revenue from one place.`}
+      actions={
+        <AdminActionButton onClick={() => navigate('/appointments?new=1')}>
+          New Appointment
+        </AdminActionButton>
+      }
+    >
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <MetricCard key={metric.title} {...metric} />
+        ))}
+      </section>
 
-      <div className="flex-1 overflow-auto">
-        <div className="p-8">
-          {/* Header */}
-          <div className="mb-10">
-            <h1 className="text-4xl font-bold text-gray-900">Dashboard</h1>
-            <p className="text-gray-600 mt-2">
-              Welcome back, {user?.name || 'Doctor'}! 👋
-            </p>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {stats.map((stat, index) => {
-              const colors = getStatColor(stat.colorIndex);
-
-              return (
-                <div
-                  key={index}
-                  className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 border border-gray-100"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-600 mb-2">
-                        {stat.title}
-                      </p>
-
-                      <p className="text-3xl font-bold text-gray-900 mb-2">
-                        {stat.value}
-                      </p>
-
-                      <div className="flex items-center">
-                        <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
-                        <span className="text-sm text-green-600 font-medium">
-                          {stat.change} from last month
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className={`${colors.bg} p-4 rounded-lg`}>
-                      <stat.icon className={`w-8 h-8 ${colors.icon}`} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Main Content */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Recent Activity */}
-            <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-md border border-gray-100">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-900">
-                  Recent Activity
-                </h2>
-                <span className="text-sm text-gray-500">Last 7 days</span>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-start p-4 bg-gradient-to-r from-green-50 to-transparent rounded-lg border border-green-100">
-                  <div className="w-3 h-3 bg-green-500 rounded-full mt-1.5 mr-4"></div>
-
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">
-                      New appointment booked
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      John Doe scheduled with Dr. Sarah
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">2 hours ago</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start p-4 bg-gradient-to-r from-blue-50 to-transparent rounded-lg border border-blue-100">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full mt-1.5 mr-4"></div>
-
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">
-                      Patient record updated
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Medical history updated for Maria Johnson
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">5 hours ago</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start p-4 bg-gradient-to-r from-purple-50 to-transparent rounded-lg border border-purple-100">
-                  <div className="w-3 h-3 bg-purple-500 rounded-full mt-1.5 mr-4"></div>
-
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">
-                      Payment processed
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      $250 payment received for appointment
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">1 day ago</p>
-                  </div>
-                </div>
-              </div>
+      <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+        <div className="rounded-lg bg-white p-8 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-slate-400">
+                Operations
+              </p>
+              <h2 className="mt-2 text-2xl font-extrabold text-[#111827]">
+                Hospital Activity
+              </h2>
             </div>
+            <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold text-slate-600">
+              Live overview
+            </span>
+          </div>
 
-            {/* Quick Stats */}
-            <div className="space-y-6">
-              <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-2xl shadow-md text-white">
-                <p className="text-blue-100 text-sm font-medium mb-2">
-                  This Month
-                </p>
-                <p className="text-3xl font-bold mb-4">32</p>
-                <p className="text-blue-100 text-sm">
-                  Appointments Completed
-                </p>
-              </div>
+          <div className="mt-6 space-y-4">
+            {activity.map((item) => (
+              <article
+                key={item.title}
+                className="flex flex-col gap-4 rounded-lg bg-[#f7f8fb] p-5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex items-start gap-4">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                    <ClipboardCheck className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h3 className="font-extrabold text-[#111827]">{item.title}</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      {item.description}
+                    </p>
+                  </div>
+                </div>
+                <StatusBadge status={item.status} />
+              </article>
+            ))}
+          </div>
+        </div>
 
-              <div className="bg-gradient-to-br from-green-600 to-green-700 p-6 rounded-2xl shadow-md text-white">
-                <p className="text-green-100 text-sm font-medium mb-2">
-                  Avg Rating
-                </p>
-                <p className="text-3xl font-bold mb-4">4.8/5</p>
-                <p className="text-green-100 text-sm">
-                  Patient Satisfaction
-                </p>
+        <div className="rounded-lg bg-white p-8 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
+          <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-slate-400">
+            Today Focus
+          </p>
+          <h2 className="mt-2 text-2xl font-extrabold text-[#111827]">Keep care moving smoothly</h2>
+          <div className="mt-6 space-y-4">
+            <div className="rounded-lg bg-[#f7f8fb] p-5">
+              <div className="flex items-center gap-3">
+                <Activity className="h-5 w-5 text-blue-600" />
+                <p className="font-extrabold text-[#111827]">Emergency readiness</p>
               </div>
-
-              <div className="bg-gradient-to-br from-purple-600 to-purple-700 p-6 rounded-2xl shadow-md text-white">
-                <p className="text-purple-100 text-sm font-medium mb-2">
-                  Pending
-                </p>
-                <p className="text-3xl font-bold mb-4">7</p>
-                <p className="text-purple-100 text-sm">
-                  Follow-up Appointments
-                </p>
+              <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                Confirm triage desk, duty doctor, and ICU escalation coverage.
+              </p>
+            </div>
+            <div className="rounded-lg bg-[#f7f8fb] p-5">
+              <div className="flex items-center gap-3">
+                <Stethoscope className="h-5 w-5 text-emerald-600" />
+                <p className="font-extrabold text-[#111827]">Doctor schedule</p>
               </div>
+              <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                Review upcoming visits and keep specialist slots updated.
+              </p>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </AdminLayout>
   );
 };
 
