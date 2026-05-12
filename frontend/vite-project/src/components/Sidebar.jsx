@@ -1,15 +1,17 @@
 import { Link, useLocation } from 'react-router-dom';
 import { createElement } from 'react';
-import { 
+import { Link, useLocation } from 'react-router-dom';
+import { createElement } from 'react';
+import {
   Activity,
   ExternalLink,
-  LayoutDashboard, 
-  Users, 
-  UserPlus, 
-  Calendar, 
-  DollarSign, 
+  LayoutDashboard,
+  Users,
+  UserPlus,
+  Calendar,
+  DollarSign,
   LogOut,
-  Stethoscope
+  Stethoscope,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -40,9 +42,7 @@ const Sidebar = () => {
       </div>
 
       <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.08] p-4">
-        <p className="text-xs font-semibold uppercase text-cyan-100">
-          Signed in
-        </p>
+        <p className="text-xs font-semibold uppercase text-cyan-100">Signed in</p>
         <div className="mt-3 flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f6c65b] text-sm font-bold text-slate-950">
             {(user?.name || 'AD').slice(0, 2).toUpperCase()}
@@ -107,4 +107,5 @@ const Sidebar = () => {
 };
 
 export default Sidebar;
+
 
